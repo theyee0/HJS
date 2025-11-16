@@ -31,24 +31,21 @@ class NeuralNetwork(nn.Module):
         #number of channels of the input will be 12 (12 chess pieces)
         super().__init__()
 
-        self.layer_stack_1 = nn.Sequential(
-            nn.Conv2d(in_channels = 13, out_channels = 26, kernel_size = 3, stride = 1, padding = 1),
-            nn.Conv2d(in_channels = 26, out_channels = 52, kernel_size = 5, stride = 1, padding = 2))
-
-        self.layer_stack_2 = nn.Sequential(
+        self.layer_stack = nn.Sequential(
             nn.Flatten(start_dim = 1),
-            nn.Dropout(0.1),
-            nn.Linear(64 * 52, 64 * 32),
+            nn.Linear(64 * 13, 64 * 16),
             nn.SELU(),
-            nn.Linear(64 * 32, 64 * 8),
+            nn.Linear(64 * 16, 64 * 8),
             nn.SELU(),
-            nn.Dropout(0.2),
-            nn.Linear(64 * 8, 1))
+            nn.Linear(64 * 8, 64),
+            nn.SELU(),
+            nn.Linear(64, 16),
+            nn.SELU(),
+            nn.Linear(16, 1))
 
     def forward(self, x):
         # x: torch.Tensor - input tensor
-        x = self.layer_stack_1(x)
-        x = self.layer_stack_2(x)
+        x = self.layer_stack(x)
 
         return x
 
@@ -185,4 +182,3 @@ def predict(board, model):
 
         tensor = tensor.unsqueeze(dim = 0)
         return model(tensor)[0].item()
-
