@@ -185,5 +185,3 @@ def predict(board, model):
         tensor = tensor.unsqueeze(dim = 0)
         prediction = model(tensor)[0].item()
         return prediction if board.turn == chess.WHITE else -prediction
-
-train()

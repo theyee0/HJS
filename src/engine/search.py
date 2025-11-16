@@ -61,7 +61,7 @@ class EngineState:
         estimate = max_frac * (rem_time / 1000) / (1 + math.exp(-k * (shift - s)))
 
         print(f"Info: Time target: {estimate}")
-        return estimate
+        return 0.4
 
 
     def hash_add(self, m, score, depth, node_type):
