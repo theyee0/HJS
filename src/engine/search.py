@@ -61,7 +61,7 @@ class EngineState:
         estimate = max_frac * (rem_time / 1000) / (1 + math.exp(-k * (shift - s)))
 
         print(f"Info: Time target: {estimate}")
-        return 1
+        return 0.5
 
 
     def hash_add(self, m, score, depth, node_type):
@@ -78,7 +78,7 @@ class EngineState:
         if len(moves) == 0:
             return chess.Move.null()
 
-        initial_depth = 3
+        initial_depth = 2
 
         ret_score = None
         ret_move = None
@@ -142,7 +142,7 @@ class EngineState:
         try:
 
             if depth == 0:
-                return self.quiesce(alpha, beta, 20)
+                return self.quiesce(alpha, beta, 5)
 
             best_score = -float("inf")
             best_move = None
