@@ -31,24 +31,14 @@ class NeuralNetwork(nn.Module):
         super().__init__()
 
         self.layer_stack_1 = nn.Sequential(
-            nn.Dropout(0.1),
             nn.Conv2d(in_channels = 13, out_channels = 26, kernel_size = 3, stride = 1, padding = 1),
-            nn.Dropout(0.1),
-            nn.Conv2d(in_channels = 26, out_channels = 52, kernel_size = 5, stride = 1, padding = 2),
-            nn.Dropout(0.1),
-            nn.Conv2d(in_channels = 52, out_channels = 104, kernel_size = 7, stride = 1, padding = 3),
-            nn.Dropout(0.1),
-            nn.Conv2d(in_channels = 104, out_channels = 208, kernel_size = 11, stride = 1, padding = 5))
+            nn.Conv2d(in_channels = 26, out_channels = 52, kernel_size = 5, stride = 1, padding = 2))
 
         self.layer_stack_2 = nn.Sequential(
-            nn.Dropout(0.2),
             nn.Flatten(start_dim = 1),
-            nn.Linear(64 * 208, 64 * 64),
+            nn.Dropout(0.1),
+            nn.Linear(64 * 52, 64 * 32),
             nn.SELU(),
-            nn.Dropout(0.2),
-            nn.Linear(64 * 64, 64 * 32),
-            nn.SELU(),
-            nn.Dropout(0.2),
             nn.Linear(64 * 32, 64 * 8),
             nn.SELU(),
             nn.Dropout(0.2),
@@ -126,7 +116,7 @@ def train():
     position_list, scores_list = load_tensors_from_fen(data)
 
     training_data = ChessPosData(position_list, scores_list)
-    train_loader = DataLoader(training_data, batch_size=64, shuffle=False)
+    train_loader = DataLoader(training_data, batch_size=128, shuffle=True)
 
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters())
@@ -170,7 +160,7 @@ def predict(board):
     model = NeuralNetwork()
     model.to(device)
 
-    model.load_state_dict(torch.load("model.pt", weights_only=True))
+    model.load_state_dict(torch.load("model.pt", map_location=torch.device('cpu'), weights_only=True))
     model.eval()
 
     with torch.no_grad():
@@ -178,4 +168,3 @@ def predict(board):
         return model(tensor)[0].item()
 
 train()
-print(predict("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"))
