@@ -31,47 +31,33 @@ class NeuralNetwork(nn.Module):
         super().__init__()
 
         self.layer_stack_1 = nn.Sequential(
-            nn.Dropout(0.2),
+            nn.Dropout(0.1),
             nn.Conv2d(in_channels = 13, out_channels = 26, kernel_size = 3, stride = 1, padding = 1),
-            nn.Flatten(start_dim = 1),
-            nn.Dropout(0.2),
-            nn.Linear(64 * 26, 64 * 26),
-            nn.SELU(),
-            nn.Linear(64 * 26, 64 * 26))
+            nn.Dropout(0.1),
+            nn.Conv2d(in_channels = 26, out_channels = 52, kernel_size = 5, stride = 1, padding = 2),
+            nn.Dropout(0.1),
+            nn.Conv2d(in_channels = 52, out_channels = 104, kernel_size = 7, stride = 1, padding = 3),
+            nn.Dropout(0.1),
+            nn.Conv2d(in_channels = 104, out_channels = 208, kernel_size = 11, stride = 1, padding = 5))
 
         self.layer_stack_2 = nn.Sequential(
             nn.Dropout(0.2),
-            nn.Conv2d(in_channels = 26, out_channels = 26, kernel_size = 3, stride = 1, padding = 1),
-            nn.Dropout(0.2),
             nn.Flatten(start_dim = 1),
-            nn.Linear(64 * 26, 64 * 26),
+            nn.Linear(64 * 208, 64 * 64),
             nn.SELU(),
-            nn.Linear(64 * 26, 64 * 26))
-
-        self.layer_stack_3 = nn.Sequential(
             nn.Dropout(0.2),
-            nn.Conv2d(in_channels = 26, out_channels = 26, kernel_size = 3, stride = 1, padding = 1),
-            nn.Dropout(0.2),
-            nn.Flatten(start_dim = 1),
-            nn.Linear(64 * 26, 64 * 26),
+            nn.Linear(64 * 64, 64 * 32),
             nn.SELU(),
-            nn.Linear(64*26, 1))
-
-
-        self.unflatten = nn.Unflatten(1, (26, 8, 8))
-
+            nn.Dropout(0.2),
+            nn.Linear(64 * 32, 64 * 8),
+            nn.SELU(),
+            nn.Dropout(0.2),
+            nn.Linear(64 * 8, 1))
 
     def forward(self, x):
         # x: torch.Tensor - input tensor
         x = self.layer_stack_1(x)
-
-        x = self.unflatten(x)
-
         x = self.layer_stack_2(x)
-
-        x = self.unflatten(x)
-
-        x = self.layer_stack_3(x)
 
         return x
 
@@ -106,7 +92,7 @@ def load_tensors_from_fen(data):
     position_list = []
     scores_list = []
 
-    num_fen = 10 #len(data['fen'])
+    num_fen = len(data['fen'])
 
     for i in range(num_fen): 
         print(f"\rLoading fen string {i + 1} of {num_fen} ({(i + 1.0) / num_fen})", end='')
@@ -140,12 +126,12 @@ def train():
     position_list, scores_list = load_tensors_from_fen(data)
 
     training_data = ChessPosData(position_list, scores_list)
-    train_loader = DataLoader(training_data, batch_size=64, shuffle=True)
+    train_loader = DataLoader(training_data, batch_size=64, shuffle=False)
 
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters())
 
-    num_epochs = 100
+    num_epochs = 20
     total_steps = len(train_loader)
 
     #training the network
@@ -158,8 +144,6 @@ def train():
             pos_tensor = pos_tensor.to(device)
             score_tensor = score_tensor.to(device)
 
-            print(score_tensor)
-
             outputs = model(pos_tensor)
 
             loss = criterion(outputs, score_tensor.unsqueeze(1))
@@ -167,8 +151,6 @@ def train():
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
-
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
         print()
         print()
@@ -191,6 +173,9 @@ def predict(board):
     model.load_state_dict(torch.load("model.pt", weights_only=True))
     model.eval()
 
-    tensor = fen_to_tensor(board).unsqueeze(dim = 0)
+    with torch.no_grad():
+        tensor = fen_to_tensor(board).unsqueeze(dim = 0)
+        return model(tensor)[0].item()
 
-    return model(tensor)[0].item()
+train()
+print(predict("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"))
