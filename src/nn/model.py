@@ -32,22 +32,21 @@ class NeuralNetwork(nn.Module):
         #number of channels of the input will be 12 (12 chess pieces)
         super().__init__()
 
-        self.layer_stack_1 = nn.Sequential(
-            nn.Conv2d(in_channels = 12, out_channels = 24, kernel_size = 3, stride = 1, padding = 1),
-            nn.Conv2d(in_channels = 24, out_channels = 48, kernel_size = 5, stride = 1, padding = 2))
-
-        self.layer_stack_2 = nn.Sequential(
+        self.layer_stack = nn.Sequential(
             nn.Flatten(start_dim = 1),
-            nn.Linear(64 * 48, 64 * 16),
+            nn.Linear(64 * 12, 64 * 8),
             nn.SELU(),
-            nn.Linear(64 * 16, 64 * 4),
+            nn.Linear(64 * 8, 64),
             nn.SELU(),
-            nn.Linear(64 * 4, 1))
+            nn.Linear(64, 32),
+            nn.SELU(),
+            nn.Linear(32, 4),
+            nn.SELU(),
+            nn.Linear(4, 1))
 
     def forward(self, x):
         # x: torch.Tensor - input tensor
-        x = self.layer_stack_1(x)
-        x = self.layer_stack_2(x)
+        x = self.layer_stack(x)
 
         return x
 
@@ -73,7 +72,7 @@ def load_tensors_from_fen(data):
     position_list = []
     scores_list = []
 
-    num_fen = 16 #len(data['fen'])
+    num_fen = len(data['fen'])
     board = chess.Board()
 
     for i in range(num_fen): 
@@ -175,8 +174,16 @@ def load_model_and_predict(fen):
 
 
 def predict(board, model):
+    tensor = None
+
     with torch.no_grad():
-        tensor = board_to_tensor(board)
+        if board.turn == chess.BLACK:
+            tensor = board_to_tensor(board.mirror())
+        else:
+            tensor = board_to_tensor(board)
 
         tensor = tensor.unsqueeze(dim = 0)
-        return model(tensor)[0].item()
+        prediction = model(tensor)[0].item()
+        return prediction if board.turn == chess.WHITE else -prediction
+
+train()

@@ -56,12 +56,12 @@ class EngineState:
         s = self.prev_eval if self.board.turn == chess.WHITE else -self.prev_eval
         k = 0.009
         shift = -100
-        max_frac = 0.3
+        max_frac = 0.1
 
         estimate = max_frac * (rem_time / 1000) / (1 + math.exp(-k * (shift - s)))
 
         print(f"Info: Time target: {estimate}")
-        return 1
+        return estimate
 
 
     def hash_add(self, m, score, depth, node_type):
@@ -78,10 +78,10 @@ class EngineState:
         if len(moves) == 0:
             return chess.Move.null()
 
-        initial_depth = 3
+        initial_depth = 2
 
         ret_score = None
-        ret_move = None
+        ret_move = moves[0]
 
         depth = initial_depth
 
@@ -125,6 +125,7 @@ class EngineState:
 
                 ret_score = best_score
                 ret_move = best_move
+                print(best_move)
                 depth += 1
 
             self.hash_add(ret_move, ret_score, depth, "pv")
@@ -142,7 +143,7 @@ class EngineState:
         try:
 
             if depth == 0:
-                return self.quiesce(alpha, beta, 20)
+                return self.quiesce(alpha, beta, 10)
 
             best_score = -float("inf")
             best_move = None
@@ -231,5 +232,5 @@ class EngineState:
 
     def evaluate(self):
         prediction = self.predict(self.board, self.nn_model)
-        print(prediction)
-        return prediction
+
+        return prediction if board.turn == chess.WHITE else -prediction
