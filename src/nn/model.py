@@ -161,7 +161,7 @@ def load_model(filename):
     model = NeuralNetwork()
     model.to(device)
 
-    model.load_state_dict(torch.load(filename, weights_only=True))
+    model.load_state_dict(torch.load(filename, map_location=torch.device(device),  weights_only=True))
     model.eval()
 
     return model
