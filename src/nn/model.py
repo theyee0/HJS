@@ -7,6 +7,7 @@ import chess
 from torch import nn
 import os
 
+torch.set_default_dtype(torch.bfloat16)
 
 class ChessPosData(Dataset):
     def __init__(self, pos_list, scores_list):
@@ -32,18 +33,18 @@ class NeuralNetwork(nn.Module):
         super().__init__()
 
         self.layer_stack_1 = nn.Sequential(
-            nn.Conv2d(in_channels = 13, out_channels = 26, kernel_size = 3, stride = 1, padding = 1),
-            nn.Conv2d(in_channels = 26, out_channels = 52, kernel_size = 5, stride = 1, padding = 2))
+            nn.Conv2d(in_channels = 12, out_channels = 24, kernel_size = 3, stride = 1, padding = 1),
+            nn.Conv2d(in_channels = 24, out_channels = 48, kernel_size = 5, stride = 1, padding = 2))
 
         self.layer_stack_2 = nn.Sequential(
             nn.Flatten(start_dim = 1),
             nn.Dropout(0.1),
-            nn.Linear(64 * 52, 64 * 32),
+            nn.Linear(64 * 48, 64 * 16),
             nn.SELU(),
-            nn.Linear(64 * 32, 64 * 8),
+            nn.Linear(64 * 16, 64 * 4),
             nn.SELU(),
-            nn.Dropout(0.2),
-            nn.Linear(64 * 8, 1))
+            nn.Dropout(0.1),
+            nn.Linear(64 * 4, 1))
 
     def forward(self, x):
         # x: torch.Tensor - input tensor
@@ -59,12 +60,10 @@ def fen_to_tensor(fen):
         'p': 6, 'n': 7, 'b': 8, 'r': 9, 'q': 10, 'k': 11,
     }
 
-    tensor = torch.zeros(13, 8, 8)
+    tensor = torch.zeros(12, 8, 8)
     tokens = fen.split()
     rows = tokens[0].split('/')
 
-    if tokens[1] == "w":
-        tensor[12] = torch.ones(8,8)
     for i, row in enumerate(rows):
         col = 0
         for j in range(len(row)):
@@ -75,7 +74,7 @@ def fen_to_tensor(fen):
                 tensor[n][i][col] = 1
                 col += 1
 
-    return tensor
+    return (tensor, tokens[1])
 
 
 def load_tensors_from_fen(data):
@@ -87,11 +86,11 @@ def load_tensors_from_fen(data):
 
     for i in range(num_fen): 
         print(f"\rLoading fen string {i + 1} of {num_fen} ({(i + 1.0) / num_fen})", end='')
-        tensor = fen_to_tensor(data['fen'][i])
+        tensor, color = fen_to_tensor(data['fen'][i])
         position_list.append(tensor)
 
         if math.isnan(data['score'][i]):
-            if tensor[12][0][0] == 1:
+            if color == 'w':
                 scores_list.append(10000)
             else:
                 scores_list.append(-10000)
@@ -108,7 +107,7 @@ def train():
     device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
 
     model = NeuralNetwork()
-    model.to(device)
+    model.to(device).to(torch.bfloat16)
 
     # Read fen/score data from CSV file
     csv_path = "positions.csv"
@@ -142,9 +141,9 @@ def train():
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
+        print()
+        print()
 
-        print()
-        print()
         #for loop iterates through the number of epochs
         #the number of epochs determines the number of iterations
         #the inner for loop goes through the images and labels within the data loader
@@ -159,7 +158,7 @@ def load_model(filename):
     device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
 
     model = NeuralNetwork()
-    model.to(device)
+    model.to(device).to(torch.bfloat16)
 
     model.load_state_dict(torch.load(filename, map_location=torch.device('cpu'), weights_only=True))
     model.eval()
@@ -167,11 +166,16 @@ def load_model(filename):
     return model
 
 
+def load_model_and_predict(fen):
+    model = load_model("model.pt")
+    tensor = model(fen_to_tensor(fen)[0].unsqueeze(dim = 0))
+
+    return tensor[0].item()
+
+
 def predict(board, model):
     with torch.no_grad():
-        tensor = torch.zeros(13, 8, 8)
-        if (board.turn == chess.WHITE):
-            tensor[12] = torch.ones(8, 8)
+        tensor = torch.zeros(12, 8, 8)
         for square in chess.SQUARES:
             piece = board.piece_at(square)
             if piece is None:
@@ -186,3 +190,5 @@ def predict(board, model):
         tensor = tensor.unsqueeze(dim = 0)
         return model(tensor)[0].item()
 
+train()
+print(load_model_and_predict("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"))
