@@ -189,6 +189,3 @@ def predict(board, model):
 
         tensor = tensor.unsqueeze(dim = 0)
         return model(tensor)[0].item()
-
-train()
-print(load_model_and_predict("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"))
