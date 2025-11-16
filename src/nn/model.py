@@ -155,7 +155,7 @@ def load_model(filename):
     model.to(device)
     model.to(torch.bfloat16)
 
-    model.load_state_dict(torch.load(filename, map_location=torch.device('cpu'), weights_only=True))
+    model.load_state_dict(torch.load(filename, map_location=torch.device(device), weights_only=True))
     model.eval()
 
     return model
@@ -174,6 +174,8 @@ def load_model_and_predict(fen):
 
 
 def predict(board, model):
+    device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
+
     tensor = None
 
     with torch.no_grad():
@@ -183,5 +185,5 @@ def predict(board, model):
             tensor = board_to_tensor(board)
 
         tensor = tensor.unsqueeze(dim = 0)
-        prediction = model(tensor)[0].item()
+        prediction = model(tensor.to(device))[0].item()
         return prediction if board.turn == chess.WHITE else -prediction
