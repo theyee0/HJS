@@ -3,6 +3,7 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import pandas as pd
 import math
+import chess
 from torch import nn
 import os
 
@@ -154,17 +155,34 @@ def train():
     torch.save(model.state_dict(), "model.pt")
 
 
-def predict(board):
+def load_model(filename):
     device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
 
     model = NeuralNetwork()
     model.to(device)
 
-    model.load_state_dict(torch.load("model.pt", map_location=torch.device('cpu'), weights_only=True))
+    model.load_state_dict(torch.load(filename, map_location=torch.device('cpu'), weights_only=True))
     model.eval()
 
+    return model
+
+
+def predict(board, model):
     with torch.no_grad():
-        tensor = fen_to_tensor(board).unsqueeze(dim = 0)
+        tensor = torch.zeros(13, 8, 8)
+        if (board.turn == chess.WHITE):
+            tensor[12] = torch.ones(8, 8)
+        for square in chess.SQUARES:
+            piece = board.piece_at(square)
+            if piece is None:
+                continue
+
+            code = piece.piece_type - 1
+            if piece.color == chess.BLACK:
+                code += 6
+
+            tensor[code][square // 8][square % 8] = 1
+
+        tensor = tensor.unsqueeze(dim = 0)
         return model(tensor)[0].item()
 
-train()

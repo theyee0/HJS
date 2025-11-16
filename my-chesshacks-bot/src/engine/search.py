@@ -8,15 +8,20 @@ class EngineState:
     hash_size = 65536
     wht = [None] * hash_size
     bht = [None] * hash_size
+
+    nn_model = None
+
     endtime = 0
     rem_time = 0
 
     prev_eval = 0
 
 
-    def __init__(self, board):
+    def __init__(self, board, model, predict):
         self.board = board
         self.endtime = 0
+        self.nn_model = model
+        self.predict = predict
 
 
     def value(self, piece):
@@ -44,18 +49,20 @@ class EngineState:
 
         return (hash_move, killer, history)
 
+
     def judge_time(self, rem_time):
         print(f"Info: Total time: {rem_time}")
 
         s = self.prev_eval if self.board.turn == chess.WHITE else -self.prev_eval
         k = 0.009
-        shift = -250
-        max_frac = 0.2
+        shift = -100
+        max_frac = 0.3
 
         estimate = max_frac * (rem_time / 1000) / (1 + math.exp(-k * (shift - s)))
 
         print(f"Info: Time target: {estimate}")
-        return estimate
+        return 1
+
 
     def hash_add(self, m, score, depth, node_type):
         zobrist = chess.polyglot.zobrist_hash(self.board) % self.hash_size
@@ -71,17 +78,19 @@ class EngineState:
         if len(moves) == 0:
             return chess.Move.null()
 
+        initial_depth = 3
+
         ret_score = None
         ret_move = None
 
-        depth = 1
+        depth = initial_depth
 
         self.endtime = time.time_ns() + int(max_time * 1e9)
 
         ht = self.wht if chess.WHITE else self.bht
 
         try:
-            while time.time_ns() < self.endtime:
+            while depth <= initial_depth or time.time_ns() < self.endtime:
                 best_score = -float("inf")
                 best_move = None
 
@@ -105,11 +114,12 @@ class EngineState:
 
                     alpha = max(score, alpha)
 
-                    if depth > 1 and time.time_ns() >= self.endtime:
-                        break;
 
-                if depth > 1 and time.time_ns() >= self.endtime:
-                    break;
+                    if depth > initial_depth and time.time_ns() >= self.endtime:
+                        break
+
+                if depth > initial_depth and time.time_ns() >= self.endtime:
+                    break
 
                 print(f"Depth: {depth} - Score: {best_score}")
 
@@ -118,128 +128,108 @@ class EngineState:
                 depth += 1
 
             self.hash_add(ret_move, ret_score, depth, "pv")
+
+            self.prev_eval = ret_score if self.board.turn == chess.WHITE else -ret_score
+
+            print(ret_move)
         except Exception as e:
             print(f"Exception: {e}")
 
-        self.prev_eval = ret_score
-        print(ret_move)
         return ret_move
 
 
     def pvs(self, alpha, beta, depth):
-        if time.time_ns() >= self.endtime:
-            return 0
+        try:
 
-        if depth == 0:
-            return self.quiesce(alpha, beta, 5)
+            if depth == 0:
+                return self.quiesce(alpha, beta, 20)
 
-        best_score = -float("inf")
-        best_move = None
+            best_score = -float("inf")
+            best_move = None
 
-        ht = self.wht if self.board.turn == chess.WHITE else self.bht
+            ht = self.wht if self.board.turn == chess.WHITE else self.bht
 
-        moves = sorted(list(self.board.legal_moves), key = lambda x: self.move_key(x), reverse = True)
+            moves = sorted(list(self.board.legal_moves), key = lambda x: self.move_key(x), reverse = True)
 
-        if len(moves) == 0:
-            return -float("inf") if self.board.is_check() else 0
+            if len(moves) == 0:
+                return -float("inf") if self.board.is_check() else 0
 
-        for move in moves:
-            self.board.push(move)
+            for move in moves:
+                self.board.push(move)
 
-            score = -self.pvs(-(alpha + 1), -alpha, depth - 1)
+                score = -self.pvs(-(alpha + 1), -alpha, depth - 1)
 
-            if alpha < score and score < beta:
-                score = -self.pvs(-beta, -alpha, depth - 1)
+                if alpha < score and score < beta:
+                    score = -self.pvs(-beta, -alpha, depth - 1)
 
-            self.board.pop()
+                self.board.pop()
 
-            if time.time_ns() >= self.endtime:
-                return 0
+                if score > best_score:
+                    best_score = score
+                    best_move = move
 
-            if score > best_score:
-                best_score = score
-                best_move = move
+                if score >= beta:
+                    self.hash_add(move, score, depth, "cut")
+                    return score
 
-            if score >= beta:
-                self.hash_add(move, score, depth, "cut")
-                return score
+                alpha = max(score, alpha)
 
-            alpha = max(score, alpha)
+            self.hash_add(best_move, best_score, depth, "pv")
+        except Exception as e:
+            print(f"Exception: {e}")
 
-        self.hash_add(best_move, best_score, depth, "pv")
         return best_score
 
 
     def quiesce(self, alpha, beta, depth):
-        if time.time_ns() >= self.endtime:
-            return 0
+        try:
+            MAX_DELTA = 300
 
-        MAX_DELTA = 300
+            stand_pat = self.evaluate()
 
-        stand_pat = self.evaluate()
+            if depth == 0:
+                return stand_pat
 
-        if depth == 0:
-            return stand_pat
+            if stand_pat + MAX_DELTA < alpha or stand_pat > beta:
+                return stand_pat
 
-        if stand_pat + MAX_DELTA < alpha or stand_pat > beta:
-            return stand_pat
+            alpha = max(stand_pat, alpha)
 
-        alpha = max(stand_pat, alpha)
+            best_score = stand_pat
+            best_move = None
 
-        best_score = stand_pat
-        best_move = None
+            ht = self.wht if self.board.turn == chess.WHITE else self.bht
 
-        ht = self.wht if self.board.turn == chess.WHITE else self.bht
+            moves = sorted(filter(lambda x: self.board.is_capture(x), self.board.legal_moves), key = lambda x: self.move_key(x), reverse = True)
 
-        moves = sorted(filter(lambda x: self.board.is_capture(x), self.board.legal_moves), key = lambda x: self.move_key(x), reverse = True)
+            for move in moves:
+                self.board.push(move)
 
-        for move in moves:
-            self.board.push(move)
+                score = -self.quiesce(-(alpha + 1), -alpha, depth -1)
 
-            score = -self.quiesce(-(alpha + 1), -alpha, depth -1)
+                if alpha < score and score < beta:
+                    score = -self.quiesce(-beta, -alpha, depth - 1)
 
-            if alpha < score and score < beta:
-                score = -self.quiesce(-beta, -alpha, depth - 1)
+                self.board.pop()
 
-            self.board.pop()
+                if (score > best_score):
+                    best_score = score
+                    best_move = move
 
-            if time.time_ns() >= self.endtime:
-                return 0
+                if score >= beta:
+                    self.hash_add(move, score, depth, "cut")
+                    return score
 
-            if (score > best_score):
-                best_score = score
-                best_move = move
+                alpha = max(score, alpha)
 
-            if score >= beta:
-                self.hash_add(move, score, depth, "cut")
-                return score
-
-            alpha = max(score, alpha)
-
-        self.hash_add(best_move, best_score, depth, "pv")
-
+            self.hash_add(best_move, best_score, depth, "pv")
+        except Exception as e:
+            print(f"Exception: {e}")
+            
         return best_score
 
 
     def evaluate(self):
-        total = 0
-        mobility_weight = 7
-
-        for square in chess.SQUARES:
-            if self.board.color_at(square) == chess.WHITE:
-                total += self.value(self.board.piece_at(square))
-            elif self.board.color_at(square) == chess.BLACK:
-                total -= self.value(self.board.piece_at(square))
-
-        if self.board.turn == chess.WHITE:
-            total += mobility_weight * len(list(self.board.legal_moves))
-            self.board.push(chess.Move.null())
-            total -= mobility_weight * len(list(self.board.legal_moves))
-            self.board.pop()
-        else:
-            total -= mobility_weight * len(list(self.board.legal_moves))
-            self.board.push(chess.Move.null())
-            total += mobility_weight * len(list(self.board.legal_moves))
-            self.board.pop()
-
-        return total if self.board.turn == chess.WHITE else -total
+        prediction = self.predict(self.board, self.nn_model)
+        print(prediction)
+        return prediction
