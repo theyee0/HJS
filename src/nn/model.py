@@ -38,12 +38,10 @@ class NeuralNetwork(nn.Module):
 
         self.layer_stack_2 = nn.Sequential(
             nn.Flatten(start_dim = 1),
-            nn.Dropout(0.1),
             nn.Linear(64 * 48, 64 * 16),
             nn.SELU(),
             nn.Linear(64 * 16, 64 * 4),
             nn.SELU(),
-            nn.Dropout(0.1),
             nn.Linear(64 * 4, 1))
 
     def forward(self, x):
@@ -54,27 +52,20 @@ class NeuralNetwork(nn.Module):
         return x
 
 
-def fen_to_tensor(fen):
-    labels = {
-        'P': 0, 'N': 1, 'B': 2, 'R': 3, 'Q': 4, 'K': 5,
-        'p': 6, 'n': 7, 'b': 8, 'r': 9, 'q': 10, 'k': 11,
-    }
-
+def board_to_tensor(board):
     tensor = torch.zeros(12, 8, 8)
-    tokens = fen.split()
-    rows = tokens[0].split('/')
+    for square in chess.SQUARES:
+        piece = board.piece_at(square)
+        if piece is None:
+            continue
 
-    for i, row in enumerate(rows):
-        col = 0
-        for j in range(len(row)):
-            if row[j] >= '1' and row[j] <= '8':
-                col += int(row[j])
-            else:
-                n = labels[row[j]]
-                tensor[n][i][col] = 1
-                col += 1
+        code = piece.piece_type - 1
+        if piece.color == chess.BLACK:
+            code += 6
 
-    return (tensor, tokens[1])
+        tensor[code][square // 8][square % 8] = 1
+
+    return tensor
 
 
 def load_tensors_from_fen(data):
@@ -82,21 +73,24 @@ def load_tensors_from_fen(data):
     position_list = []
     scores_list = []
 
-    num_fen = len(data['fen'])
+    num_fen = 16 #len(data['fen'])
+    board = chess.Board()
 
     for i in range(num_fen): 
         print(f"\rLoading fen string {i + 1} of {num_fen} ({(i + 1.0) / num_fen})", end='')
-        tensor, color = fen_to_tensor(data['fen'][i])
-        position_list.append(tensor)
 
         if math.isnan(data['score'][i]):
-            if color == 'w':
-                scores_list.append(10000)
-            else:
-                scores_list.append(-10000)
+            continue
+
+        board.set_fen(data['fen'][i])
+                      
+        if board.turn == chess.BLACK:
+            board.apply_mirror()
+            position_list.append(board_to_tensor(board))
+            scores_list.append(-data['score'][i])
         else:
+            position_list.append(board_to_tensor(board))
             scores_list.append(data['score'][i])
-    print()
 
     return (
         torch.stack(position_list),
@@ -107,7 +101,8 @@ def train():
     device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
 
     model = NeuralNetwork()
-    model.to(device).to(torch.bfloat16)
+    model.to(device)
+    model.tox(torch.bfloat16)
 
     # Read fen/score data from CSV file
     csv_path = "positions.csv"
@@ -158,7 +153,8 @@ def load_model(filename):
     device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
 
     model = NeuralNetwork()
-    model.to(device).to(torch.bfloat16)
+    model.to(device)
+    model.to(torch.bfloat16)
 
     model.load_state_dict(torch.load(filename, map_location=torch.device('cpu'), weights_only=True))
     model.eval()
@@ -168,24 +164,16 @@ def load_model(filename):
 
 def load_model_and_predict(fen):
     model = load_model("model.pt")
-    tensor = model(fen_to_tensor(fen)[0].unsqueeze(dim = 0))
 
-    return tensor[0].item()
+    with torch.no_grad():
+        tensor = model(fen_to_tensor(fen)[0].unsqueeze(dim = 0))
+
+        return tensor[0].item()
 
 
 def predict(board, model):
     with torch.no_grad():
-        tensor = torch.zeros(12, 8, 8)
-        for square in chess.SQUARES:
-            piece = board.piece_at(square)
-            if piece is None:
-                continue
-
-            code = piece.piece_type - 1
-            if piece.color == chess.BLACK:
-                code += 6
-
-            tensor[code][square // 8][square % 8] = 1
+        tensor = board_to_tensor(board)
 
         tensor = tensor.unsqueeze(dim = 0)
         return model(tensor)[0].item()
