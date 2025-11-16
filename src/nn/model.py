@@ -158,13 +158,14 @@ def load_model(filename):
     model = NeuralNetwork()
     model.to(device)
 
-    model.load_state_dict(torch.load(filename, map_location=torch.device('cpu'), weights_only=True))
+    model.load_state_dict(torch.load(filename, map_location=torch.device(device), weights_only=True))
     model.eval()
 
     return model
 
 
 def predict(board, model):
+    device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
     with torch.no_grad():
         tensor = torch.zeros(13, 8, 8)
         if (board.turn == chess.WHITE):
@@ -181,4 +182,4 @@ def predict(board, model):
             tensor[code][square // 8][square % 8] = 1
 
         tensor = tensor.unsqueeze(dim = 0)
-        return model(tensor)[0].item()
+        return model(tensor.to(device))[0].item()
