@@ -102,7 +102,7 @@ def train():
 
     model = NeuralNetwork()
     model.to(device)
-    model.tox(torch.bfloat16)
+    model.to(torch.bfloat16)
 
     # Read fen/score data from CSV file
     csv_path = "positions.csv"
@@ -165,10 +165,11 @@ def load_model(filename):
 def load_model_and_predict(fen):
     model = load_model("model.pt")
 
-    board = chess.Board().set_fen(fen)
+    board = chess.Board()
+    board.set_fen(fen)
 
     with torch.no_grad():
-        tensor = model(board_to_tensor(board)[0].unsqueeze(dim = 0))
+        tensor = model(board_to_tensor(board).unsqueeze(dim = 0))
 
         return tensor[0].item()
 
