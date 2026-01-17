@@ -1,3 +1,13 @@
+# CNN-Powered ChessHacks Bot
+
+A bot which integrates a chess position evaluation neural network into a more traditional minimax-style search, built over 48 hours for the 2025 ChessHacks hackathon run at UWaterloo.
+
+# Design
+
+This project centers on using a convolutional neural network as the evaluation function for a chess engine. Training data was sourced from Kaggle (https://www.kaggle.com/datasets/nikitricky/chess-positions) in the form of FEN strings and the corresponding Stockfish 15.1 scores, although due to time constraints and computing power only a sample of 100,000 to 200,000 positions were utilized. Currently, board positions are encoded as a 13×8×8 tensor representing 12 overlaid planes which store piece positions, as well as a 13th layer retaining side-to-move information. During training, positions and scores are loaded from a CSV file into a custom PyTorch dataset and fed to the model using a DataLoader with mini-batching and shuffling.
+
+The original neural network consists of a stack of convolutional layers and a stack of linear layers with SELU activation, trained with mean-squared-error loss. There also exists a branch of this repo involving a lightweight "fast" model with fewer layers, used primarily in an attempt to flag the opponent. Once trained, the model replaces traditional heuristics as the bot’s evaluation function, outputting a single scalar predicted score based on the current chess position. The model is queried to guide move selection during a minimax-style search, which incorporates elements of PVS and quiescence.
+
 # ChessHacks Starter Bot
 
 This is a starter bot for ChessHacks. It includes a basic bot and devtools. This is designed to help you get used to what the interface for building a bot feels like, as well as how to scaffold your own bot.
